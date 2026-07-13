@@ -22,7 +22,7 @@ if [[ "$kernel_flavor" =~ "centos" ]]; then
     dnf config-manager --set-enabled crb
     dnf -y install "https://dl.fedoraproject.org/pub/epel/epel-release-latest-${CENTOS_VER}.noarch.rpm"
 fi
-dnf -y install --setopt=install_weak_deps=False dracut rpmrebuild sbsigntools
+dnf -y install --setopt=install_weak_deps=False dracut rpmrebuild
 
 case "$kernel_flavor" in
     "centos"|"coreos"*|"main")
@@ -149,27 +149,6 @@ else
       /"${kernel_name}-modules-extra-$kernel_version.rpm"
 fi
 
-# Strip Signatures from non-fedora Kernels
-if [[ ${kernel_flavor} =~ main|coreos|centos ]]; then
-    echo "Will not strip Fedora/CentOS signature(s) from ${kernel_flavor} kernel."
-else
-    EXISTING_SIGNATURES="$(sbverify --list /usr/lib/modules/"$kernel_version"/vmlinuz | grep '^signature \([0-9]\+\)$' | sed 's/^signature \([0-9]\+\)$/\1/')" || true
-    if [[ -n "$EXISTING_SIGNATURES" ]]; then
-        for SIGNUM in $EXISTING_SIGNATURES; do
-            echo "Found existing signature at signum $SIGNUM, removing..."
-            sbattach --remove /usr/lib/modules/"${kernel_version}"/vmlinuz
-        done
-    fi
-fi
-
-# Sign Kernel with Key
-sbsign --cert "$PUBLIC_KEY_PATH" --key "$PRIVATE_KEY_PATH" /usr/lib/modules/"${kernel_version}"/vmlinuz --output /usr/lib/modules/"${kernel_version}"/vmlinuz
-
-# Verify Signatures
-sbverify --list /usr/lib/modules/"${kernel_version}"/vmlinuz
-if ! sbverify --cert "$PUBLIC_KEY_PATH" /usr/lib/modules/"${kernel_version}"/vmlinuz; then
-    exit 1
-fi
 
 rm -f "$PRIVATE_KEY_PATH"
 
@@ -185,11 +164,6 @@ if [[ ${DUAL_SIGN:-} == "true" ]]; then
     openssl x509 -in "${KCWD}"/certs/public_key_2.der -out "${KCWD}"/certs/public_key_2.crt
     install -Dm644 "${KCWD}"/certs/public_key_2.crt "$SECOND_PUBLIC_KEY_PATH"
     install -Dm644 "${KCWD}"/certs/private_key_2.priv "$SECOND_PRIVATE_KEY_PATH"
-    sbsign --cert "$SECOND_PUBLIC_KEY_PATH" --key "$SECOND_PRIVATE_KEY_PATH" /usr/lib/modules/"${kernel_version}"/vmlinuz --output /usr/lib/modules/"${kernel_version}"/vmlinuz
-    sbverify --list /usr/lib/modules/"${kernel_version}"/vmlinuz
-    if ! sbverify --cert "$SECOND_PUBLIC_KEY_PATH" /usr/lib/modules/"${kernel_version}"/vmlinuz; then
-        exit 1
-    fi
     rm -f "$SECOND_PRIVATE_KEY_PATH"
 fi
 
@@ -201,15 +175,6 @@ rm -f /usr/lib/modules/"${kernel_version}"/vmlinuz
 find /tmp
 find /root
 dnf reinstall -y /root/rpmbuild/RPMS/"$(uname -m)"/kernel-*.rpm
-
-# Verify Again
-sbverify --list /usr/lib/modules/"${kernel_version}"/vmlinuz
-if ! sbverify --cert "$PUBLIC_KEY_PATH" /usr/lib/modules/"${kernel_version}"/vmlinuz; then
-    exit 1
-fi
-if [[ "${DUAL_SIGN:-}" == "true" ]] && ! sbverify --cert "${SECOND_PUBLIC_KEY_PATH:-}" /usr/lib/modules/"${kernel_version}"/vmlinuz; then
-    exit 1
-fi
 
 # Make Temp Dir
 mkdir -p "${KCWD}"/rpms
