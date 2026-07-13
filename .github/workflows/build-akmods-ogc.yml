@@ -12,8 +12,6 @@ on:
       - main
     paths-ignore:
       - '**.md'
-  schedule:
-    - cron: '18 0 * * *'  # 0018 UTC everyday
   workflow_dispatch:
 jobs:
   cache_kernel_ogc_44:
